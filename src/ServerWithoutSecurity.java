@@ -64,6 +64,9 @@ public class ServerWithoutSecurity {
 
 		try {
 
+			int count = 0;
+			int finalNumberOfCounts = 0;
+
 			// Transferring
 			while (!connectionSocket.isClosed()) {
 
@@ -148,7 +151,6 @@ public class ServerWithoutSecurity {
 					System.out.println("SESS: " + SESSION_KEY);
 
 				}
-				//[B@148080bb
 				/*
 				 *
 				 * *******************FILENAME***********************
@@ -161,12 +163,15 @@ public class ServerWithoutSecurity {
 					System.out.println("Receiving file...");
 
 					numBytes = fromClient.readInt();
-					byte [] filename = new byte[numBytes];
+					byte [] filenameEncrypted = new byte[numBytes];
 					// Must use read fully!
 					// See: https://stackoverflow.com/questions/25897627/datainputstream-read-vs-datainputstream-readfully
-					fromClient.readFully(filename, 0, numBytes);
+					fromClient.readFully(filenameEncrypted, 0, numBytes);
 
-					fileOutputStream = new FileOutputStream("recv_" + new String(filename, 0, numBytes));
+					byte[] filename = decryptAES(SESSION_KEY, filenameEncrypted);
+					System.out.println(new String(filename));
+
+					fileOutputStream = new FileOutputStream("recv_" + new String(filename));
 					bufferedFileOutputStream = new BufferedOutputStream(fileOutputStream);
 
 				}
@@ -179,13 +184,18 @@ public class ServerWithoutSecurity {
 				else if (packetType == 1) {
 
 					numBytes = fromClient.readInt();
-					byte [] block = new byte[numBytes];
-					fromClient.readFully(block, 0, numBytes);
+					System.out.println(numBytes);
+					byte [] blockEncrypted = new byte[numBytes];
+					fromClient.readFully(blockEncrypted, 0, numBytes);
+
+					byte[] block = decryptAES(SESSION_KEY, blockEncrypted);
+					count += 1;
 
 					if (numBytes > 0)
-						bufferedFileOutputStream.write(block, 0, numBytes);
+						bufferedFileOutputStream.write(block);
 
-					if (numBytes < 117) {
+
+					if (count == finalNumberOfCounts) {
 						System.out.println("Closing connection...");
 
 						if (bufferedFileOutputStream != null) bufferedFileOutputStream.close();
@@ -194,6 +204,8 @@ public class ServerWithoutSecurity {
 						toClient.close();
 						connectionSocket.close();
 					}
+				} else if (packetType == 5){
+					finalNumberOfCounts = fromClient.readInt();
 				}
 			}
 		} catch (Exception e) {e.printStackTrace();}
@@ -246,8 +258,7 @@ public class ServerWithoutSecurity {
 	//DECRYPT SESSION KEY
 	public static Key decryptKey (Key server_private_key, byte[] encryptedBytes) throws InvalidKeyException, IllegalBlockSizeException, NoSuchPaddingException, NoSuchAlgorithmException, BadPaddingException {
 
-//		Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
-		Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-1AndMGF1Padding");
+		Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
 		cipher.init(Cipher.DECRYPT_MODE, server_private_key);
 		byte[] decodedKey = cipher.doFinal(encryptedBytes);
 		Key originalKey = new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
@@ -255,18 +266,9 @@ public class ServerWithoutSecurity {
 		return originalKey;
 	}
 
-	public static byte[] encryptAES (Key key, byte[] text) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
-
-		Cipher cipher = Cipher.getInstance("AES");
-		cipher.init(Cipher.ENCRYPT_MODE, key);
-		byte[] result = cipher.doFinal(text);
-
-		return result;
-	}
-
 	public static byte[] decryptAES (Key key, byte[] text) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
 
-		Cipher cipher = Cipher.getInstance("AES");
+		Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
 		cipher.init(Cipher.DECRYPT_MODE, key);
 		byte[] result = cipher.doFinal(text);
 

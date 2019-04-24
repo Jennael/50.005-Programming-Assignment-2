@@ -152,6 +152,7 @@ public class ClientWithoutSecurity {
              * *******************SESSION KEY (AES)***********************
              *
              */
+
             //signal to transfer session key
             toServer.writeInt(4);
 
@@ -160,14 +161,11 @@ public class ClientWithoutSecurity {
             byte[] sessionKeyBytes = generateKey();
 //            byte[] encryptedSessionKey = encryptRSA(SERVER_PUBLIC_KEY, SESSION_KEY.getEncoded());
 
-//			toClient.writeInt(encryptedSessionKey.length);
+            toServer.writeInt(sessionKeyBytes.length);
             System.out.println("length sent: " + sessionKeyBytes.length);
             toServer.write(sessionKeyBytes);
             toServer.flush();
             System.out.println("bytes sent: " + sessionKeyBytes);
-
-
-            //[B@6ebc05a6
 
             /*
              *
@@ -179,8 +177,10 @@ public class ClientWithoutSecurity {
 
             // Send the FILENAME
             toServer.writeInt(0); //signal transferring filename
-            toServer.writeInt(FILENAME.getBytes().length);
-            toServer.write(FILENAME.getBytes());
+            toServer.writeInt(encryptAES(SESSION_KEY, FILENAME.getBytes()).length);
+            toServer.write(encryptAES(SESSION_KEY, FILENAME.getBytes()));
+//            toServer.writeInt(FILENAME.getBytes().length);
+//            toServer.write(FILENAME.getBytes());
             //toServer.flush();
 
             /*
@@ -197,14 +197,28 @@ public class ClientWithoutSecurity {
             //The client encrypts the file data (in units of blocks – for
             //RSA key size of 1024 bits, the maximum block length is 117 bytes)
 
+            int count = 0;
+
             // Send the FILE
             for (boolean fileEnded = false; !fileEnded;) {
                 numBytes = bufferedFileInputStream.read(fromFileBuffer);
                 fileEnded = numBytes < 117;
 
+                byte[] encryptedMessage = encryptAES(SESSION_KEY, fromFileBuffer);
+                count++;
+
+                if (fileEnded) {
+                    toServer.writeInt(5);
+                    toServer.writeInt(count);
+                    toServer.flush();
+                }
+
                 toServer.writeInt(1); //signal transferring file data
-                toServer.writeInt(numBytes);
-                toServer.write(fromFileBuffer);
+//                toServer.writeInt(numBytes);
+                toServer.writeInt(encryptedMessage.length);
+                System.out.println(encryptedMessage.length);
+                toServer.write(encryptedMessage);
+
                 toServer.flush();
             }
 
@@ -212,6 +226,8 @@ public class ClientWithoutSecurity {
             fileInputStream.close();
 
             System.out.println("Closing connection...");
+
+            clientSocket.close();
 
         } catch (Exception e) {e.printStackTrace();}
 
@@ -298,8 +314,7 @@ public class ClientWithoutSecurity {
         byte[] secretKeyBytes = SESSION_KEY.getEncoded();
 
         //INIT CIPHER TO ENCRYPT WITH RSA
-//        Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
-		Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-1AndMGF1Padding");
+        Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
 
         cipher.init(Cipher.ENCRYPT_MODE, SERVER_PUBLIC_KEY);
         byte[] encryptedSecretKey = cipher.doFinal(secretKeyBytes);
@@ -312,20 +327,12 @@ public class ClientWithoutSecurity {
 
     public static byte[] encryptAES (Key key, byte[] text) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
 
-        Cipher cipher = Cipher.getInstance("AES");
+        Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
         cipher.init(Cipher.ENCRYPT_MODE, key);
         byte[] result = cipher.doFinal(text);
 
         return result;
     }
 
-    public static byte[] decryptAES (Key key, byte[] text) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
-
-        Cipher cipher = Cipher.getInstance("AES");
-        cipher.init(Cipher.DECRYPT_MODE, key);
-        byte[] result = cipher.doFinal(text);
-
-        return result;
-    }
 
 }
